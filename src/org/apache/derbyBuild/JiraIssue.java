@@ -1,5 +1,10 @@
 package org.apache.derbyBuild;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -44,13 +49,90 @@ public class JiraIssue
 	     * @throws Exception if something goes wrong
 	     */
 	    
-	    
-	    
-	    
-	    
-	    
-	    
-	    
+	    public static List createJiraIssueList(String source) throws IOException
+	    {
+	    	ArrayList<JiraIssue> jiraIssue=new ArrayList<JiraIssue>();
+	    	
+	    	BufferedReader in=new BufferedReader(new FileReader(source));
+	    	String line;
+	    	System.out.println("--- Creating Jira issue list");
+	    	while((line=in.readLine())!=null&&(line.startsWith("//")))
+	    	{
+	    		System.out.println(line);
+	    	}
+	    	ArrayList<String>comments=new ArrayList<String>();
+	    	int state=STATE_ADD_KEY;
+	    	String key=null;
+	    	String summary=null;
+	    	String[] fixVersions=null;
+	    	long attachmentId=NO_RELEASE_NOTE;
+	    	do
+	    	{
+	    		if(line.startsWith("//"))
+	    		{
+	    			comments.add(line.trim());
+	    			continue;
+	    		}
+	    		if(line.startsWith("--"))
+	    		{
+	    			continue;
+	    		}
+	    		if(state==STATE_ADD_KEY)
+	    		{
+	    			key=line.trim();
+	                if (!key.startsWith("DERBY-"))
+	                {
+	                    throw new IllegalStateException(
+	                            "invalid JIRA key for Derby: " + key);
+	                }
+	                key=key.split("-")[1];
+	                //Sanity check
+	                Integer.parseInt(key);    
+	    		}
+	    		else if(state==STATE_ADD_SUMMARY)
+	    		{
+	    			summary=line.trim();
+	    		}
+	    		else if(state==STATE_ADD_FIXVERSIONS)
+	    		{
+	    			line=line.trim();
+	    			fixVersions=line.split(",");
+	    		}
+	    		else if(state==STATE_ADD_RELEASENOTE)
+	    		{
+	    				line=line.trim();
+	    				line = line.trim();
+	                    if (line.equals("null")) 
+	                    {
+	                        attachmentId = NO_RELEASE_NOTE;
+	                    } 
+	                    else  if (line.equals("missing")) 
+	                    {
+	                        attachmentId = MISSING_RELEASE_NOTE;
+	                    } 
+	                    else 
+	                    {
+	                        attachmentId = Long.parseLong(line);
+	                    }
+	                    // We now have all the information we need.
+	              		jiraIssue.add(new JiraIssue(key,summary,Arrays.asList(fixVersions),attachmentId));
+			    		state = STATE_ADD_RESET;
+	    		}
+	    		state++;
+	    	} while ((line = in.readLine()) != null);
+		    	
+		    	
+	    	 // Print the last few comments for information (by convention).
+	        int size = comments.size();
+	        if (size > 2) {
+	            System.out.println(comments.get(size -3));
+	            System.out.println(comments.get(size -2));
+	            System.out.println(comments.get(size -1));
+	        }
+
+	        return jiraIssue;
+	    }
+
 	    
 	    /**
 	     * @return the issue's key (jira number, e.g., 1234)
