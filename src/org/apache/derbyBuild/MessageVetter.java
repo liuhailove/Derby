@@ -1,6 +1,12 @@
 package org.apache.derbyBuild;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.text.MessageFormat;
+import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -47,7 +53,121 @@ public class MessageVetter
      * appear literally in the message text.
      */
     private static final Set<String> LONE_QUOTE_ALLOWED=new HashSet<String>();
-	
-	
+    static
+    {
+        // The IJ help text contains curly braces that need quoting.
+        LONE_QUOTE_ALLOWED.add("IJ_HelpText");
+        // Some of the DRDA usage messages contain the text {on|off}, which
+        // needs quoting.
+        LONE_QUOTE_ALLOWED.add("DRDA_Usage8.I");
+        LONE_QUOTE_ALLOWED.add("DRDA_Usage11.I");
+    }
+    /** The message file to check. */
+    private final File file;
+    /** The properties found in the message file. */
+    private final Properties properties;
+    
+    /**
+     * Create a new {@code MessageVetter} instance.
+     *
+     * @param file the file with the messages to check
+     * @throws IOException if the file cannot be loaded
+     */
+    private MessageVetter(File file) throws IOException
+    {
+    	this.file=file;
+    	properties=new Properties();
+    	FileInputStream in=new FileInputStream(file);
+    	try
+    	{
+    		properties.load(in);
+    	}
+    	finally
+    	{
+    		in.close();
+    	}
+    }
+    /**
+     * Vet the messages in this file. An error will be raised if an
+     * ill-formatted message is found.
+     */
+    private void vet()
+    {
+    	Enumeration e=properties.propertyNames();
+    	while(e.hasMoreElements())
+    	{
+    		String key=(String)e.nextElement();
+    		String message=properties.getProperty(key);
+    		vetMessage(key,message);
+    	}
+    }
+    /**
+     * Vet a specific message. Raise an error if it is not well-formed.
+     *
+     * @param key the message identifier
+     * @param message the message format specifier
+     */
+    private void vetMessage(String key,String message)
+    {
+    	checkSingleQuotes(key,message);
+    	checkValidMessageFormat(key,message);
+    }
+    /**
+     * Check that single-quote characters are doubled, as required by
+     * {@code java.text.MessageFormat}. Raise an error otherwise.
+     *
+     * @param key the message identifier
+     * @param message the message format specifier
+     */
+    private void checkSingleQuotes(String key,String message)
+    {
+    	Pattern p;
+    	
+    	if(LONE_QUOTE_ALLOWED.contains(key))
+    	{
+            // In some messages we allow lone single-quote characters, but
+            // only if they are used to quote curly braces. Use a regular
+            // expression that finds all single-quotes that aren't adjacent to
+            // another single-quote or a curly brace character.
+    		p=LONE_QUOTE_ALLOWED_PATTERN;
+    	}
+    	else
+    	{
+    		// Otherwise, we don't allow lone single-quote characters at all.
+    		p=LONE_QUOTE_PATTERN;			
+    	}
+    	if(p.matcher(message).find())
+    	{
+            throw new AssertionError("Lone single-quote in message " + key +
+                    " in " + file + ".\nThis is OK if it is used for quoting " +
+                    "special characters in the message. If this is what the " +
+                    "character is used for, add an exception in " +
+                    getClass().getName() + ".LONE_QUOTE_ALLOWED.");
+    	}
+    }
+    /**
+     * Check that a message format specifier is valid. Raise an error if it
+     * is not.
+     *
+     * @param key the message identifier
+     * @param message the message format specifier
+     */
+    private void checkValidMessageFormat(String key, String message) 
+    {
+        try
+        {
+            // See if a MessageFormat instance can be produced based on this
+            // message format specifier.
+            new MessageFormat(message);
+        } 
+        catch (Exception e)
+        {
+            AssertionError ae = new AssertionError(
+                    "Message " + key + " in " + file + " isn't a valid " +
+                    "java.text.MessageFormat pattern.");
+            ae.initCause(e);
+            throw ae;
+        }
+    }
 	
 }
